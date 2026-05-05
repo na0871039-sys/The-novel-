@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      // Hardcoded admin email from request OR check firestore document
+      return isSignedIn() && (
+        request.auth.token.email == "na0871039@gmail.com" || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 256 &&
+             data.isAdmin is bool &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidNovel(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.author is string && data.author.size() <= 200 &&
+             data.category in ["Love", "Horror", "Mystery", "Adventure", "Emotional", "Motivational", "Drama"] &&
+             data.chapterCount is int &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidChapter(data) {
+      return data.novelId is string && isValidId(data.novelId) &&
+             data.chapterNumber is int &&
+             data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 100000 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidBookmark(data) {
+      return data.novelId is string && isValidId(data.novelId) &&
+             data.addedAt is timestamp;
+    }
+
+    function isValidProgress(data) {
+      return data.novelId is string && isValidId(data.novelId) &&
+             data.lastChapterNumber is int &&
+             data.lastReadAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().isAdmin == false; // Can't self-promote
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().isAdmin == existing().isAdmin && // Can't change admin status
+                    incoming().email == existing().email;
+      
+      match /bookmarks/{bookmarkId} {
+        allow list, get: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidBookmark(incoming());
+        allow delete: if isOwner(userId);
+      }
+
+      match /progress/{novelId} {
+        allow list, get: if isOwner(userId);
+        allow write: if isOwner(userId) && isValidProgress(incoming());
+      }
+    }
+
+    match /novels/{novelId} {
+      allow list, get: if true; // Everyone can read
+      allow create: if isAdmin() && isValidNovel(incoming()) && incoming().createdAt == request.time;
+      allow update: if isAdmin() && isValidNovel(incoming()) && 
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+
+      match /chapters/{chapterId} {
+        allow list, get: if true; // Everyone can read
+        allow create: if isAdmin() && isValidChapter(incoming()) && incoming().createdAt == request.time;
+        allow update: if isAdmin() && isValidChapter(incoming()) && 
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().novelId == existing().novelId;
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}

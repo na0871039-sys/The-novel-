@@ -1,0 +1,154 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "na0871039@gmail.com" || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'isAdmin', 'createdAt']) &&
+             data.keys().size() >= 3 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.isAdmin is bool &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidNovel(data) {
+      return data.keys().hasAll(['title', 'description', 'author', 'category', 'chapterCount', 'createdAt', 'creatorId']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.author is string && data.author.size() <= 200 &&
+             data.category in ["Love", "Horror", "Mystery", "Adventure", "Emotional", "Motivational", "Drama"] &&
+             data.chapterCount is int &&
+             data.creatorId == request.auth.uid &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidChapter(data) {
+      return data.keys().hasAll(['novelId', 'chapterNumber', 'title', 'content', 'createdAt']) &&
+             data.novelId is string && isValidId(data.novelId) &&
+             data.chapterNumber is int &&
+             data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 100000 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidBookmark(data) {
+      return data.keys().hasAll(['novelId', 'addedAt']) &&
+             data.novelId is string && isValidId(data.novelId) &&
+             data.addedAt is timestamp;
+    }
+
+    function isValidProgress(data) {
+      return data.keys().hasAll(['novelId', 'lastChapterNumber', 'lastReadAt']) &&
+             data.novelId is string && isValidId(data.novelId) &&
+             data.lastChapterNumber is int &&
+             data.lastReadAt is timestamp;
+    }
+
+    function isValidComment(data) {
+      return data.keys().hasAll(['userId', 'userName', 'content', 'novelId', 'chapterId', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.userName is string &&
+             data.content is string && data.content.size() <= 2000 &&
+             data.novelId is string &&
+             data.createdAt == request.time;
+    }
+
+    function isValidInteraction(data) {
+      return data.keys().hasAll(['userId', 'type', 'targetId', 'targetType', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.type in ['like', 'view'] &&
+             data.targetId is string &&
+             data.targetType in ['novel', 'chapter'] &&
+             data.createdAt == request.time;
+    }
+
+    // --- Collection Rules ---
+
+    match /comments/{commentId} {
+      allow list, get: if true;
+      allow create: if isSignedIn() && isValidComment(incoming());
+      allow update, delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /interactions/{interactionId} {
+      allow list, get: if true;
+      allow create: if isSignedIn() && isValidInteraction(incoming());
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow update: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().isAdmin == false;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().isAdmin == existing().isAdmin && 
+                    incoming().email == existing().email;
+      
+      match /bookmarks/{bookmarkId} {
+        allow list, get: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidBookmark(incoming());
+        allow delete: if isOwner(userId);
+      }
+
+      match /progress/{novelId} {
+        allow list, get: if isOwner(userId);
+        allow write: if isOwner(userId) && isValidProgress(incoming());
+      }
+    }
+
+    match /novels/{novelId} {
+      allow list, get: if true; 
+      allow create: if isSignedIn() && isValidNovel(incoming()) && incoming().createdAt == request.time;
+      allow update: if (isSignedIn() && (existing().creatorId == request.auth.uid || isAdmin())) && 
+                    isValidNovel(incoming()) && 
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().creatorId == existing().creatorId;
+      allow delete: if isSignedIn() && (existing().creatorId == request.auth.uid || isAdmin());
+
+      match /chapters/{chapterId} {
+        allow list, get: if true;
+        allow create: if (isSignedIn() && (get(/databases/$(database)/documents/novels/$(novelId)).data.creatorId == request.auth.uid || isAdmin())) &&
+                      isValidChapter(incoming()) && incoming().createdAt == request.time;
+        allow update: if (isSignedIn() && (get(/databases/$(database)/documents/novels/$(novelId)).data.creatorId == request.auth.uid || isAdmin())) &&
+                      isValidChapter(incoming()) && 
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().novelId == existing().novelId;
+        allow delete: if (isSignedIn() && (get(/databases/$(database)/documents/novels/$(novelId)).data.creatorId == request.auth.uid || isAdmin()));
+      }
+    }
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Public and private profile data for users.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "isAdmin", "createdAt"]
+    },
+    "Novel": {
+      "title": "Novel",
+      "description": "Metadata for a novel in the library.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "author": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "category": { "type": "string", "enum": ["Love", "Horror", "Mystery", "Adventure", "Emotional", "Motivational", "Drama"] },
+        "chapterCount": { "type": "number" },
+        "readerCount": { "type": "number" },
+        "popularityScore": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "author", "category", "chapterCount", "createdAt"]
+    },
+    "Chapter": {
+      "title": "Novel Chapter",
+      "description": "Contents of a specific chapter in a novel.",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "chapterNumber": { "type": "number" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["novelId", "chapterNumber", "title", "content", "createdAt"]
+    },
+    "Bookmark": {
+      "title": "User Bookmark",
+      "description": "A novel saved by a user.",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "novelTitle": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["novelId", "addedAt"]
+    },
+    "ReadingProgress": {
+      "title": "Reading Progress",
+      "description": "Tracking user progress in a specific novel.",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "lastChapterId": { "type": "string" },
+        "lastChapterNumber": { "type": "number" },
+        "lastReadAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["novelId", "lastChapterNumber", "lastReadAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Reader reflections on stories.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "novelId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "content", "novelId", "createdAt"]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "Likes and views tracking.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "view"] },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["novel", "chapter"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "targetId", "targetType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "User's bookmarked novels."
+    },
+    "/users/{userId}/progress/{novelId}": {
+      "schema": "ReadingProgress",
+      "description": "User's reading progress for a specific novel."
+    },
+    "/novels/{novelId}": {
+      "schema": "Novel",
+      "description": "Novel metadata."
+    },
+    "/novels/{novelId}/chapters/{chapterId}": {
+      "schema": "Chapter",
+      "description": "Chapters for a specific novel."
+    },
+    "/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Reader comments."
+    },
+    "/interactions/{interactionId}": {
+      "schema": "Interaction",
+      "description": "User likes and views."
+    }
+  }
+}
